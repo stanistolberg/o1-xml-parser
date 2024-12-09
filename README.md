@@ -2,9 +2,9 @@
 
 A simple parse-and-apply tool that parses XML responses from o1 in ChatGPT and applies them to a target codebase.
 
-## Demo
+## Tutorial
 
-Coming soon.
+View a tutorial [here](https://x.com/mckaywrigley/status/1865825221560893798).
 
 ## Quick Start
 
@@ -79,3 +79,14 @@ So the XML section will be:
 ```xml
 __XML HERE__
 ```
+
+## About Me
+
+I'm Mckay. I like to build AI tools.
+
+Follow me here:
+
+- [X](https://x.com/mckaywrigley)
+- [YouTube](https://www.youtube.com/@realmckaywrigley)
+- [GitHub](https://github.com/mckaywrigley)
+- [Newsletter](https://mckaywrigley.substack.com/)
