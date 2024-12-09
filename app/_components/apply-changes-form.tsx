@@ -37,12 +37,12 @@ export function ApplyChangesForm() {
 
   return (
     <div className="max-w-xl w-full mx-auto p-4 flex flex-col gap-4">
-      {errorMessage && <div className="text-red-500">{errorMessage}</div>}
-      {successMessage && <div className="text-green-500">{successMessage}</div>}
+      {errorMessage && <div className="text-red-400">{errorMessage}</div>}
+      {successMessage && <div className="text-green-400">{successMessage}</div>}
       <div className="flex flex-col">
         <label className="mb-2 font-bold">Project Directory:</label>
         <input
-          className="border p-2 w-full"
+          className="border bg-secondary text-secondary-foreground p-2 w-full rounded-md"
           type="text"
           value={projectDirectory}
           onChange={(e) => setProjectDirectory(e.target.value)}
@@ -52,14 +52,14 @@ export function ApplyChangesForm() {
       <div className="flex flex-col">
         <label className="mb-2 font-bold">Paste XML here:</label>
         <textarea
-          className="border p-2 h-64 w-full"
+          className="border bg-secondary text-secondary-foreground p-2 h-64 w-full rounded-md"
           value={xml}
           onChange={(e) => setXml(e.target.value)}
           placeholder="Paste the <code_changes>...</code_changes> XML here"
         />
       </div>
       <button
-        className="bg-primary text-primary-foreground p-2 rounded"
+        className="bg-primary text-primary-foreground p-2 rounded-md hover:bg-primary/90 transition-colors"
         onClick={handleApply}
       >
         Apply
