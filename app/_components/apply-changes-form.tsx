@@ -13,6 +13,8 @@ export function ApplyChangesForm() {
   const [successMessage, setSuccessMessage] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [preserveXml, setPreserveXml] = useState(false);
+  const [succeededFiles, setSucceededFiles] = useState<string[]>([]);
+  const [failedFiles, setFailedFiles] = useState<{filePath: string; error: string}[]>([]);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -28,18 +30,30 @@ export function ApplyChangesForm() {
 
   const handleApply = async () => {
     setErrorMessage("");
+    setSucceededFiles([]);
+    setFailedFiles([]);
     if (!xml.trim()) {
       setErrorMessage("Please paste XML before applying changes.");
       return;
     }
     try {
       const trimmedDirectory = projectDirectory.trim();
-      await applyChangesAction(xml, trimmedDirectory);
+      const result = await applyChangesAction(xml, trimmedDirectory);
       localStorage.setItem(STORAGE_KEY, trimmedDirectory);
-      if (!preserveXml) {
-        setXml("");
+
+      // Check for failures
+      if (result.failedFiles.length > 0) {
+        setFailedFiles(result.failedFiles);
+        setSucceededFiles(result.succeededFiles);
+        setErrorMessage("Some files failed to process. See details below.");
+      } else {
+        setSucceededFiles(result.succeededFiles);
+        setSuccessMessage("All changes applied successfully");
+        if (!preserveXml) {
+          setXml("");
+        }
       }
-      setSuccessMessage("Changes applied successfully");
+
     } catch (error: any) {
       setErrorMessage("An error occurred while applying changes.");
     }
@@ -50,6 +64,32 @@ export function ApplyChangesForm() {
       <div className="max-w-xl w-full flex flex-col gap-4">
         {errorMessage && <div className="text-red-400">{errorMessage}</div>}
         {successMessage && <div className="text-green-400">{successMessage}</div>}
+
+        {/* Display succeeded files */}
+        {succeededFiles.length > 0 && (
+          <div className="text-green-400">
+            <h3 className="font-bold mb-2">Succeeded Files:</h3>
+            <ul className="list-disc list-inside">
+              {succeededFiles.map((file) => (
+                <li key={file}>{file}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Display failed files with errors */}
+        {failedFiles.length > 0 && (
+          <div className="text-red-400">
+            <h3 className="font-bold mb-2">Failed Files:</h3>
+            <ul className="list-disc list-inside">
+              {failedFiles.map((f, idx) => (
+                <li key={idx}>
+                  <strong>{f.filePath}:</strong> {f.error}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="flex flex-col">
           <label className="mb-2 font-bold">Project Directory:</label>
