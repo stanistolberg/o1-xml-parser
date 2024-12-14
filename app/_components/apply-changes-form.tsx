@@ -72,14 +72,15 @@ export function ApplyChangesForm() {
       setRunHistory(updatedHistory);
       localStorage.setItem(HISTORY_KEY, JSON.stringify(updatedHistory));
 
-      // Check for failures
+      // Check results
+      const totalProcessed = result.succeededFiles.length + result.failedFiles.length;
       if (result.failedFiles.length > 0) {
         setCurrentFailedFiles(result.failedFiles);
         setCurrentSucceededFiles(result.succeededFiles);
-        setErrorMessage("Some files failed to process. See details below.");
+        setErrorMessage(`Processed ${totalProcessed} files: ${result.succeededFiles.length} succeeded, ${result.failedFiles.length} failed.`);
       } else {
         setCurrentSucceededFiles(result.succeededFiles);
-        setSuccessMessage("All changes applied successfully");
+        setSuccessMessage(`All ${result.succeededFiles.length} files processed successfully.`);
         if (!preserveXml) {
           setXml("");
         }
@@ -96,10 +97,21 @@ export function ApplyChangesForm() {
         {errorMessage && <div className="text-red-400">{errorMessage}</div>}
         {successMessage && <div className="text-green-400">{successMessage}</div>}
 
-        {/* Display current run succeeded files */}
+        {/* Display counts */}
+        {(currentSucceededFiles.length > 0 || currentFailedFiles.length > 0) && (
+          <div className="text-sm text-gray-300">
+            <p>
+              Total processed: {currentSucceededFiles.length + currentFailedFiles.length}, 
+              Succeeded: {currentSucceededFiles.length}, 
+              Failed: {currentFailedFiles.length}
+            </p>
+          </div>
+        )}
+
+        {/* Display succeeded files */}
         {currentSucceededFiles.length > 0 && (
           <div className="text-green-400">
-            <h3 className="font-bold mb-2">This Run - Succeeded Files:</h3>
+            <h3 className="font-bold mb-2">Succeeded Files:</h3>
             <ul className="list-disc list-inside">
               {currentSucceededFiles.map((f, idx) => (
                 <li key={idx}>
@@ -110,10 +122,10 @@ export function ApplyChangesForm() {
           </div>
         )}
 
-        {/* Display current run failed files with errors */}
+        {/* Display failed files */}
         {currentFailedFiles.length > 0 && (
           <div className="text-red-400">
-            <h3 className="font-bold mb-2">This Run - Failed Files:</h3>
+            <h3 className="font-bold mb-2">Failed Files:</h3>
             <ul className="list-disc list-inside">
               {currentFailedFiles.map((f, idx) => (
                 <li key={idx}>
@@ -169,37 +181,43 @@ export function ApplyChangesForm() {
         {runHistory.length > 0 && (
           <div className="mt-8">
             <h3 className="font-bold text-lg">Run History</h3>
-            {runHistory.map((run, runIndex) => (
-              <div key={runIndex} className="mt-4 border p-2 rounded-md">
-                <div className="text-sm mb-2">
-                  <strong>Run Timestamp:</strong> {new Date(run.timestamp).toLocaleString()}
+            {runHistory.map((run, runIndex) => {
+              const totalProcessed = run.succeededFiles.length + run.failedFiles.length;
+              return (
+                <div key={runIndex} className="mt-4 border p-2 rounded-md">
+                  <div className="text-sm mb-2">
+                    <strong>Run Timestamp:</strong> {new Date(run.timestamp).toLocaleString()}
+                  </div>
+                  <p className="text-sm mb-2 text-gray-300">
+                    Processed {totalProcessed} file(s), {run.succeededFiles.length} succeeded, {run.failedFiles.length} failed.
+                  </p>
+                  {run.succeededFiles.length > 0 && (
+                    <div className="text-green-400 mb-2">
+                      <h4 className="font-bold">Succeeded Files:</h4>
+                      <ul className="list-disc list-inside">
+                        {run.succeededFiles.map((f, idx) => (
+                          <li key={idx}>
+                            <strong>{f.filePath}</strong> → {f.absolutePath}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {run.failedFiles.length > 0 && (
+                    <div className="text-red-400">
+                      <h4 className="font-bold">Failed Files:</h4>
+                      <ul className="list-disc list-inside">
+                        {run.failedFiles.map((f, idx) => (
+                          <li key={idx}>
+                            <strong>{f.filePath}</strong> → {f.absolutePath}{f.error ? `: ${f.error}` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
-                {run.succeededFiles.length > 0 && (
-                  <div className="text-green-400 mb-2">
-                    <h4 className="font-bold">Succeeded Files:</h4>
-                    <ul className="list-disc list-inside">
-                      {run.succeededFiles.map((f, idx) => (
-                        <li key={idx}>
-                          <strong>{f.filePath}</strong> → {f.absolutePath}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {run.failedFiles.length > 0 && (
-                  <div className="text-red-400">
-                    <h4 className="font-bold">Failed Files:</h4>
-                    <ul className="list-disc list-inside">
-                      {run.failedFiles.map((f, idx) => (
-                        <li key={idx}>
-                          <strong>{f.filePath}</strong> → {f.absolutePath}{f.error ? `: ${f.error}` : ""}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
