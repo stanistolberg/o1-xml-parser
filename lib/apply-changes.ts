@@ -8,13 +8,13 @@ interface FileChange {
   file_code?: string;
 }
 
-export async function applyFileChanges(change: FileChange, projectDirectory: string) {
+export async function applyFileChanges(change: FileChange, projectDirectory: string): Promise<string> {
   const { file_operation, file_path, file_code } = change;
   
   // Handle absolute paths
   const fullPath = isAbsolute(file_path) 
-    ? file_path // Use the absolute path directly
-    : join(projectDirectory, file_path); // Only join with project directory if path is relative
+    ? file_path
+    : join(projectDirectory, file_path);
 
   console.log(`Processing file: ${fullPath}`);
 
@@ -43,6 +43,8 @@ export async function applyFileChanges(change: FileChange, projectDirectory: str
       console.warn(`Unknown file_operation: ${file_operation} for file: ${file_path}`);
       break;
   }
+
+  return fullPath;
 }
 
 async function ensureDirectoryExists(dir: string) {

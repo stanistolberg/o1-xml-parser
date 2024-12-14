@@ -5,16 +5,22 @@ import { applyFileChanges } from "@/lib/apply-changes";
 import { parseXmlString } from "@/lib/xml-parser";
 import path from "path";
 
+interface FileResult {
+  filePath: string;
+  absolutePath: string;
+  error?: string;
+}
+
 interface ApplyChangesResult {
-  succeededFiles: string[];
-  failedFiles: { filePath: string; error: string }[];
+  succeededFiles: FileResult[];
+  failedFiles: FileResult[];
 }
 
 export async function applyChangesAction(xml: string, projectDirectory: string): Promise<ApplyChangesResult> {
   console.log("Received XML:", xml.substring(0, 200) + "...");
   
-  const succeededFiles: string[] = [];
-  const failedFiles: { filePath: string; error: string }[] = [];
+  const succeededFiles: FileResult[] = [];
+  const failedFiles: FileResult[] = [];
   
   try {
     const changes = await parseXmlString(xml);
@@ -60,13 +66,15 @@ export async function applyChangesAction(xml: string, projectDirectory: string):
     for (const file of changes) {
       try {
         console.log(`Processing file: ${file.file_path} (${file.file_operation})`);
-        await applyFileChanges(file, finalDirectory);
+        const absPath = await applyFileChanges(file, finalDirectory);
         console.log(`Successfully processed: ${file.file_path}`);
-        succeededFiles.push(file.file_path);
+        succeededFiles.push({ filePath: file.file_path, absolutePath: absPath });
       } catch (error: unknown) {
         console.error(`Error processing file ${file.file_path}:`, error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-        failedFiles.push({ filePath: file.file_path, error: errorMessage });
+        // We still try to derive the absolute path even if it failed partially
+        const absPath = path.isAbsolute(file.file_path) ? file.file_path : path.join(finalDirectory, file.file_path);
+        failedFiles.push({ filePath: file.file_path, absolutePath: absPath, error: errorMessage });
       }
     }
 
@@ -74,8 +82,7 @@ export async function applyChangesAction(xml: string, projectDirectory: string):
   } catch (error: unknown) {
     console.error('Error in applyChangesAction:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    // If an overarching error occurs before processing files, return that as a single failure
-    failedFiles.push({ filePath: 'N/A', error: errorMessage });
+    failedFiles.push({ filePath: 'N/A', absolutePath: 'N/A', error: errorMessage });
   }
 
   return { succeededFiles, failedFiles };

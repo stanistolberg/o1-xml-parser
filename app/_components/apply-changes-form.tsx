@@ -3,6 +3,19 @@ import { applyChangesAction } from "@/actions/apply-changes-actions";
 import { useEffect, useState } from "react";
 
 const STORAGE_KEY = "o1-xml-parser-minicache";
+const HISTORY_KEY = "o1-xml-parser-history";
+
+interface FileResult {
+  filePath: string;
+  absolutePath: string;
+  error?: string;
+}
+
+interface RunResult {
+  timestamp: number;
+  succeededFiles: FileResult[];
+  failedFiles: FileResult[];
+}
 
 export function ApplyChangesForm() {
   const [xml, setXml] = useState<string>("");
@@ -13,8 +26,15 @@ export function ApplyChangesForm() {
   const [successMessage, setSuccessMessage] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [preserveXml, setPreserveXml] = useState(false);
-  const [succeededFiles, setSucceededFiles] = useState<string[]>([]);
-  const [failedFiles, setFailedFiles] = useState<{filePath: string; error: string}[]>([]);
+
+  const [currentSucceededFiles, setCurrentSucceededFiles] = useState<FileResult[]>([]);
+  const [currentFailedFiles, setCurrentFailedFiles] = useState<FileResult[]>([]);
+
+  const [runHistory, setRunHistory] = useState<RunResult[]>(() => {
+    if (typeof window === "undefined") return [];
+    const stored = localStorage.getItem(HISTORY_KEY);
+    return stored ? JSON.parse(stored) : [];
+  });
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -30,8 +50,8 @@ export function ApplyChangesForm() {
 
   const handleApply = async () => {
     setErrorMessage("");
-    setSucceededFiles([]);
-    setFailedFiles([]);
+    setCurrentSucceededFiles([]);
+    setCurrentFailedFiles([]);
     if (!xml.trim()) {
       setErrorMessage("Please paste XML before applying changes.");
       return;
@@ -41,13 +61,24 @@ export function ApplyChangesForm() {
       const result = await applyChangesAction(xml, trimmedDirectory);
       localStorage.setItem(STORAGE_KEY, trimmedDirectory);
 
+      const newRun: RunResult = {
+        timestamp: Date.now(),
+        succeededFiles: result.succeededFiles,
+        failedFiles: result.failedFiles
+      };
+
+      // Store this run in history
+      const updatedHistory = [...runHistory, newRun];
+      setRunHistory(updatedHistory);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(updatedHistory));
+
       // Check for failures
       if (result.failedFiles.length > 0) {
-        setFailedFiles(result.failedFiles);
-        setSucceededFiles(result.succeededFiles);
+        setCurrentFailedFiles(result.failedFiles);
+        setCurrentSucceededFiles(result.succeededFiles);
         setErrorMessage("Some files failed to process. See details below.");
       } else {
-        setSucceededFiles(result.succeededFiles);
+        setCurrentSucceededFiles(result.succeededFiles);
         setSuccessMessage("All changes applied successfully");
         if (!preserveXml) {
           setXml("");
@@ -60,31 +91,33 @@ export function ApplyChangesForm() {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4">
+    <div className="min-h-screen w-full flex items-start justify-center p-4">
       <div className="max-w-xl w-full flex flex-col gap-4">
         {errorMessage && <div className="text-red-400">{errorMessage}</div>}
         {successMessage && <div className="text-green-400">{successMessage}</div>}
 
-        {/* Display succeeded files */}
-        {succeededFiles.length > 0 && (
+        {/* Display current run succeeded files */}
+        {currentSucceededFiles.length > 0 && (
           <div className="text-green-400">
-            <h3 className="font-bold mb-2">Succeeded Files:</h3>
+            <h3 className="font-bold mb-2">This Run - Succeeded Files:</h3>
             <ul className="list-disc list-inside">
-              {succeededFiles.map((file) => (
-                <li key={file}>{file}</li>
+              {currentSucceededFiles.map((f, idx) => (
+                <li key={idx}>
+                  <strong>{f.filePath}</strong> → {f.absolutePath}
+                </li>
               ))}
             </ul>
           </div>
         )}
 
-        {/* Display failed files with errors */}
-        {failedFiles.length > 0 && (
+        {/* Display current run failed files with errors */}
+        {currentFailedFiles.length > 0 && (
           <div className="text-red-400">
-            <h3 className="font-bold mb-2">Failed Files:</h3>
+            <h3 className="font-bold mb-2">This Run - Failed Files:</h3>
             <ul className="list-disc list-inside">
-              {failedFiles.map((f, idx) => (
+              {currentFailedFiles.map((f, idx) => (
                 <li key={idx}>
-                  <strong>{f.filePath}:</strong> {f.error}
+                  <strong>{f.filePath}</strong> → {f.absolutePath}: {f.error}
                 </li>
               ))}
             </ul>
@@ -131,6 +164,44 @@ export function ApplyChangesForm() {
             Preserve XML after applying
           </label>
         </div>
+
+        {/* Display run history */}
+        {runHistory.length > 0 && (
+          <div className="mt-8">
+            <h3 className="font-bold text-lg">Run History</h3>
+            {runHistory.map((run, runIndex) => (
+              <div key={runIndex} className="mt-4 border p-2 rounded-md">
+                <div className="text-sm mb-2">
+                  <strong>Run Timestamp:</strong> {new Date(run.timestamp).toLocaleString()}
+                </div>
+                {run.succeededFiles.length > 0 && (
+                  <div className="text-green-400 mb-2">
+                    <h4 className="font-bold">Succeeded Files:</h4>
+                    <ul className="list-disc list-inside">
+                      {run.succeededFiles.map((f, idx) => (
+                        <li key={idx}>
+                          <strong>{f.filePath}</strong> → {f.absolutePath}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {run.failedFiles.length > 0 && (
+                  <div className="text-red-400">
+                    <h4 className="font-bold">Failed Files:</h4>
+                    <ul className="list-disc list-inside">
+                      {run.failedFiles.map((f, idx) => (
+                        <li key={idx}>
+                          <strong>{f.filePath}</strong> → {f.absolutePath}{f.error ? `: ${f.error}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
