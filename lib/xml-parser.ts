@@ -8,13 +8,15 @@ interface ParsedFileChange {
 }
 
 /**
- * A fully hardened parser to handle:
- * - Multiple <changed_files> blocks inside <code_changes>
- * - Multiple <file> elements inside each <changed_files>
- * - Legacy style without <file> but with direct <file_summary>, <file_operation>, <file_path>, and <file_code>
- * - Properly extracts CDATA from <file_code>, if present
- * - Validates all required fields and logs appropriate errors
- * - Returns all valid file changes without skipping any
+ * A fully hardened parser:
+ * - Handles multiple <changed_files> blocks inside <code_changes>.
+ * - Handles multiple <file> elements inside each <changed_files>.
+ * - Handles legacy style without <file> elements:
+ *   * Now supports multiple legacy files per <changed_files> by repeatedly scanning for 
+ *     file_summary/file_operation/file_path/file_code sets in sequence.
+ * - Extracts CDATA from <file_code> if present.
+ * - Validates all required fields and logs errors if missing.
+ * - Returns all valid file changes.
  */
 export async function parseXmlString(xmlString: string): Promise<ParsedFileChange[] | null> {
   try {
@@ -65,7 +67,7 @@ export async function parseXmlString(xmlString: string): Promise<ParsedFileChang
       return fileCodeNode.textContent?.trim() || undefined;
     };
 
-    // Processes a <file> element node
+    // Process a <file> element node
     const processFileElement = (fileNode: Node): ParsedFileChange | null => {
       const fileChange: Partial<ParsedFileChange> = {};
 
@@ -110,14 +112,107 @@ export async function parseXmlString(xmlString: string): Promise<ParsedFileChang
       return fileChange as ParsedFileChange;
     };
 
+    // Process legacy files from a changed_files node by scanning multiple sets
+    const processLegacyFiles = (changedFilesNode: Node): ParsedFileChange[] => {
+      const legacyChanges: ParsedFileChange[] = [];
+
+      // We'll gather ELEMENT_NODE children
+      const elements: Node[] = [];
+      for (let i = 0; i < changedFilesNode.childNodes.length; i++) {
+        const n = changedFilesNode.childNodes.item(i);
+        if (n && n.nodeType === 1) { // ELEMENT_NODE
+          elements.push(n);
+        }
+      }
+
+      // We now scan elements repeatedly looking for patterns:
+      // file_summary -> file_operation -> file_path -> file_code
+      // Once we get a full set, we push that file change and continue scanning
+      // There might be multiple sets in sequence.
+      let idx = 0;
+      while (idx < elements.length) {
+        let file_summary: string | undefined;
+        let file_operation: string | undefined;
+        let file_path: string | undefined;
+        let file_code: string | undefined;
+
+        // look for file_summary
+        if (idx < elements.length && elements[idx].nodeName === "file_summary") {
+          file_summary = elements[idx].textContent?.trim();
+          idx++;
+        } else {
+          // If we don't start with file_summary, no more files in legacy mode
+          break;
+        }
+
+        // file_operation
+        if (idx < elements.length && elements[idx].nodeName === "file_operation") {
+          file_operation = elements[idx].textContent?.trim().toUpperCase();
+          idx++;
+        } else {
+          console.warn("Legacy file incomplete: missing file_operation after file_summary");
+          break;
+        }
+
+        // file_path
+        if (idx < elements.length && elements[idx].nodeName === "file_path") {
+          file_path = elements[idx].textContent?.trim();
+          idx++;
+        } else {
+          console.warn("Legacy file incomplete: missing file_path after file_operation");
+          break;
+        }
+
+        // file_code
+        if (idx < elements.length && elements[idx].nodeName === "file_code") {
+          file_code = extractFileCode(elements[idx]);
+          idx++;
+        } else {
+          console.warn("Legacy file incomplete: missing file_code after file_path");
+          break;
+        }
+
+        // Validate this file
+        if (!file_summary || !file_operation || !file_path) {
+          console.warn("Legacy file incomplete: missing required fields");
+          continue;
+        }
+
+        if (!["CREATE", "UPDATE", "DELETE"].includes(file_operation)) {
+          console.error(`Invalid file_operation: ${file_operation}. Must be CREATE, UPDATE, or DELETE.`);
+          continue;
+        }
+
+        if (["CREATE", "UPDATE"].includes(file_operation) && !file_code) {
+          console.error(`Missing file_code for ${file_operation} on ${file_path}`);
+          continue;
+        }
+
+        // All good, push this file
+        legacyChanges.push({
+          file_summary,
+          file_operation,
+          file_path,
+          file_code
+        });
+      }
+
+      if (legacyChanges.length === 0) {
+        console.warn("No valid legacy files found in this <changed_files> block.");
+      }
+
+      return legacyChanges;
+    };
+
     // Process each changed_files block
     for (let c = 0; c < changedFilesNodes.length; c++) {
       const changedFilesNode = changedFilesNodes.item(c);
       if (!changedFilesNode) continue;
 
       const fileNodes = changedFilesNode.getElementsByTagName("file");
+
       if (fileNodes.length > 0) {
-        // Multiple <file> elements scenario
+        // multiple <file> elements scenario
         for (let f = 0; f < fileNodes.length; f++) {
           const fileNode = fileNodes.item(f);
           if (!fileNode) continue;
@@ -127,53 +222,9 @@ export async function parseXmlString(xmlString: string): Promise<ParsedFileChang
           }
         }
       } else {
-        // Legacy scenario: fields directly under <changed_files>
-        const legacyFile: Partial<ParsedFileChange> = {};
-        let fileCodeNode: Node | null = null;
-
-        for (let i = 0; i < changedFilesNode.childNodes.length; i++) {
-          const node = changedFilesNode.childNodes.item(i);
-          if (node && node.nodeType === 1) {
-            const nodeName = node.nodeName;
-            const text = node.textContent?.trim() ?? "";
-            switch (nodeName) {
-              case "file_summary":
-                legacyFile.file_summary = text;
-                break;
-              case "file_operation":
-                legacyFile.file_operation = text.toUpperCase();
-                break;
-              case "file_path":
-                legacyFile.file_path = text;
-                break;
-              case "file_code":
-                fileCodeNode = node;
-                break;
-            }
-          }
-        }
-
-        if (fileCodeNode) {
-          legacyFile.file_code = extractFileCode(fileCodeNode);
-        }
-
-        // Validate legacy file
-        if (!legacyFile.file_summary || !legacyFile.file_operation || !legacyFile.file_path) {
-          console.warn("Legacy <changed_files> missing required fields or no <file> tags present. Skipping this block.");
-          continue;
-        }
-
-        if (!["CREATE", "UPDATE", "DELETE"].includes(legacyFile.file_operation)) {
-          console.error(`Invalid file_operation: ${legacyFile.file_operation}. Must be CREATE, UPDATE, or DELETE.`);
-          continue;
-        }
-
-        if (["CREATE", "UPDATE"].includes(legacyFile.file_operation) && !legacyFile.file_code) {
-          console.error(`Missing file_code for ${legacyFile.file_operation} operation on ${legacyFile.file_path}`);
-          continue;
-        }
-
-        allChanges.push(legacyFile as ParsedFileChange);
+        // Legacy scenario: try to parse multiple files inline
+        const legacyFiles = processLegacyFiles(changedFilesNode);
+        allChanges.push(...legacyFiles);
       }
     }
 
